@@ -30,6 +30,7 @@
 static const uint8_t TRIGGER_PERIOD = 75;
 
 #define ZCDIMMERSET_SHOW 1
+//#define ZCDIMMERSET_DISABLE_PERSIST 1     // Do not store and restore ZCDimmerSet-Value
 //#define ZC_DEBUG 1
 
 struct AC_ZERO_CROSS_DIMMER {
@@ -85,7 +86,9 @@ uint32_t IRAM_ATTR ACDimmerTimer_intr_ESP8266() {
 void ACDimmerInit()
 {
   for (uint8_t i = 0 ; i < 5; i++) {
+#ifndef ZCDIMMERSET_DISABLE_PERSIST
     ac_zero_cross_dimmer.detailpower[i] = Settings->zcdimmerset[i];
+#endif  
     ac_zero_cross_dimmer.fallingEdgeDimmer = Settings->flag6.zcfallingedge;
   }
 }
@@ -146,7 +149,7 @@ void IRAM_ATTR ACDimmerTimer_intr() {
       // Very close to the fire event. Loop the last µseconds to wait.
 #ifdef ESP8266
       // on ESP8266 we can change dynamically the trigger interval.
-      ac_zero_cross_dimmer.actual_tigger_Period = tmin(ac_zero_cross_dimmer.actual_tigger_Period*2,ac_zero_cross_dimmer.enable_time_us[i] - time_since_zc);
+//      ac_zero_cross_dimmer.actual_tigger_Period = tmin(ac_zero_cross_dimmer.actual_tigger_Period*2,ac_zero_cross_dimmer.enable_time_us[i] - time_since_zc);
 #endif 
 #ifdef ESP32         
       while (time_since_zc < ac_zero_cross_dimmer.enable_time_us[i]) {
@@ -174,7 +177,7 @@ void ACDimmerControllTrigger(void) {
 #endif  
   for (uint8_t i = 0; i < MAX_PWMS; i++){
     if (Pin(GPIO_PWM1, i) == -1) continue;
-    ac_zero_cross_dimmer.disable_time_us[i] = (ac_zero_cross_dimmer.cycle_time_us * 99) / 100;
+    ac_zero_cross_dimmer.disable_time_us[i] = (ac_zero_cross_dimmer.cycle_time_us * 95) / 100;
     if (ac_zero_cross_dimmer.detailpower[i]){
       ac_zero_cross_dimmer.lastlight[i] = changeUIntScale(ac_zero_cross_dimmer.detailpower[i]/10, 0, 1000, 0, 1023);
     } else {
@@ -251,7 +254,11 @@ void CmndZCDimmerSet(void)
 {
   if ((XdrvMailbox.index > 0) && (XdrvMailbox.index <= MAX_PWMS)) {
     if (XdrvMailbox.data_len > 0) {
+#ifdef ZCDIMMERSET_DISABLE_PERSIST
+      ac_zero_cross_dimmer.detailpower[XdrvMailbox.index-1] = (uint16_t)(100 * CharToFloat(XdrvMailbox.data));
+#else
       Settings->zcdimmerset[XdrvMailbox.index-1] = ac_zero_cross_dimmer.detailpower[XdrvMailbox.index-1] = (uint16_t)(100 * CharToFloat(XdrvMailbox.data));
+#endif
     }
     ResponseCmndIdxFloat((float)(ac_zero_cross_dimmer.detailpower[XdrvMailbox.index-1]) / 100, 2);
   }
