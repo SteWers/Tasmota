@@ -118,6 +118,9 @@ struct SOLAXX1_GLOBALDATA {
   uint8_t QueryID_count = 240;
   bool Command_QueryID = false;;
   bool Command_QueryConfig = false;
+  bool MeterMode = false;
+  float MeterPower = 5000;
+  char MeterPowerTopic[TOPSZ] = "MT175/tele/SENSOR";
 } solaxX1_global;
 
 struct SOLAXX1_SENDDATA {
@@ -143,27 +146,69 @@ void solaxX1_RS485Send(void) {
   memcpy(message + 7, solaxX1_SendData.FunctionCode, 1);
   memcpy(message + 8, solaxX1_SendData.DataLength, 1);
   memcpy(message + 9, solaxX1_SendData.Payload, sizeof(solaxX1_SendData.Payload));
+  solaxX1_RS485SendRaw(message, 9 + solaxX1_SendData.DataLength[0], 0);
+/*
   uint16_t crc = solaxX1_calculateCRC(message, 9 + solaxX1_SendData.DataLength[0]); // calculate out crc bytes
-  while (solaxX1Serial->available() > 0) { // read serial if any old data is available
+  while (solaxX1Serial->available()) { // read serial if any old data is available
     solaxX1Serial->read();
   }
-  if (PinUsed(GPIO_SOLAXX1_RTS)) {
-    digitalWrite(Pin(GPIO_SOLAXX1_RTS), HIGH);
-  }
+  if (PinUsed(GPIO_SOLAXX1_RTS)) digitalWrite(Pin(GPIO_SOLAXX1_RTS), HIGH);
   solaxX1Serial->flush();
   solaxX1Serial->write(message, 9 + solaxX1_SendData.DataLength[0]);
   solaxX1Serial->write(highByte(crc));
   solaxX1Serial->write(lowByte(crc));
   solaxX1Serial->flush();
-  if (PinUsed(GPIO_SOLAXX1_RTS)) {
-    digitalWrite(Pin(GPIO_SOLAXX1_RTS), LOW);
-  }
+  if (PinUsed(GPIO_SOLAXX1_RTS)) digitalWrite(Pin(GPIO_SOLAXX1_RTS), LOW);
   AddLogBuffer(LOG_LEVEL_DEBUG_MORE, message, 9 + solaxX1_SendData.DataLength[0]);
+*/
+}
+
+void solaxX1_RS485SendMeter(uint8_t *SendBuffer, uint8_t DataLen) {
+  solaxX1_RS485SendRaw(SendBuffer, DataLen, 1);
+/*
+  //uint16_t crc = solaxX1_calculateCRC(SendBuffer, DataLen); // calculate out crc bytes
+  uint16_t crc = solaxX1_calculateCRC_MBUS(SendBuffer, DataLen);
+  while (solaxX1Serial->available()) { // read serial if any old data is available
+    solaxX1Serial->read();
+  }
+  if (PinUsed(GPIO_SOLAXX1_RTS)) digitalWrite(Pin(GPIO_SOLAXX1_RTS), HIGH);
+  solaxX1Serial->flush();
+  solaxX1Serial->write(SendBuffer, DataLen);
+  solaxX1Serial->write(lowByte(crc));
+  solaxX1Serial->write(highByte(crc));
+  solaxX1Serial->flush();
+  if (PinUsed(GPIO_SOLAXX1_RTS)) digitalWrite(Pin(GPIO_SOLAXX1_RTS), LOW);
+  AddLogBuffer(LOG_LEVEL_DEBUG_MORE, SendBuffer, DataLen);
+*/
+}
+
+void solaxX1_RS485SendRaw(uint8_t *SendBuffer, uint8_t DataLen, uint8_t CRCflag) {
+  uint16_t crc;
+/* Check if necessary. Causes problems in meter mode
+  while (solaxX1Serial->available()) { // read serial if any old data is available
+    solaxX1Serial->read();
+  }
+*/
+  if (PinUsed(GPIO_SOLAXX1_RTS)) digitalWrite(Pin(GPIO_SOLAXX1_RTS), HIGH);
+  solaxX1Serial->flush();
+  solaxX1Serial->write(SendBuffer, DataLen);
+  if (CRCflag) {
+    crc = solaxX1_calculateCRC_MBUS(SendBuffer, DataLen); // Use CRC MBUS algorithm
+    solaxX1Serial->write(lowByte(crc));
+    solaxX1Serial->write(highByte(crc));
+  } else {
+    crc = solaxX1_calculateCRC(SendBuffer, DataLen); // Use CRC Solax algorithm
+    solaxX1Serial->write(highByte(crc));
+    solaxX1Serial->write(lowByte(crc));
+  }
+  solaxX1Serial->flush();
+  if (PinUsed(GPIO_SOLAXX1_RTS)) digitalWrite(Pin(GPIO_SOLAXX1_RTS), LOW);
+  AddLogBuffer(LOG_LEVEL_DEBUG_MORE, SendBuffer, DataLen);
 }
 
 bool solaxX1_RS485Receive(uint8_t *ReadBuffer) {
   uint8_t len = 0;
-  while (solaxX1Serial->available() > 0) {
+  while (solaxX1Serial->available()) {
     ReadBuffer[len++] = (uint8_t)solaxX1Serial->read();
   }
   AddLogBuffer(LOG_LEVEL_DEBUG_MORE, ReadBuffer, len);
@@ -175,9 +220,25 @@ uint16_t solaxX1_calculateCRC(uint8_t *bExternTxPackage, uint8_t bLen) {
   uint8_t i;
   uint16_t wChkSum = 0;
   for (i = 0; i < bLen; i++) {
-    wChkSum = wChkSum + bExternTxPackage[i];
+    wChkSum += bExternTxPackage[i];
   }
   return wChkSum;
+}
+
+uint16_t solaxX1_calculateCRC_MBUS(uint8_t *frame, uint8_t Len) {
+  uint16_t crc = 0xFFFF;
+  for (uint32_t i = 0; i < Len; i++) {
+    crc ^= frame[i];
+    for (uint32_t j = 8; j; j--) {
+      if ((crc & 0x0001) != 0) {        // If the LSB is set
+        crc >>= 1;                      // Shift right and XOR 0xA001
+        crc ^= 0xA001;
+      } else {                          // Else LSB is not set
+        crc >>= 1;                      // Just shift right
+      }
+    }
+  }
+  return crc;
 }
 
 void solaxX1_ExtractText(uint8_t *DataIn, uint8_t *DataOut, uint8_t Begin, uint8_t End) {
@@ -253,6 +314,18 @@ uint8_t solaxX1_ParseErrorCode(uint32_t code) {
   return 0;
 }
 
+void solaxX1_SwitchMeterMode(bool MeterMode) {
+  if (solaxX1_global.MeterMode == MeterMode) return;
+  solaxX1_global.MeterMode = MeterMode;
+  if (MeterMode) {
+//    TasmotaGlobal.energy_driver = ENERGY_NONE;
+  } else {
+//    TasmotaGlobal.energy_driver = XNRG_12;
+    Energy->data_valid[0] = ENERGY_WATCHDOG;
+    solaxX1.temperature = solaxX1.dc1_voltage =  solaxX1.dc1_current = solaxX1.dc1_power = solaxX1.dc2_voltage = solaxX1.dc2_current = solaxX1.dc2_power = 0;
+  }
+}
+
 /*********************************************************************************************/
 
 void solaxX1_250MSecond(void) { // Every 250 milliseconds
@@ -260,19 +333,43 @@ void solaxX1_250MSecond(void) { // Every 250 milliseconds
   uint8_t TempData[16] = {0};
   char TempDataChar[32];
   float TempFloat;
+  static uint32_t LastMeterTime;
+  uint8_t RegisterMeterResponse[5] = {0x01, 0x03, 0x02, 0x00, 0xa8};
+  uint8_t ValueMeterResponse[7] = {0x01, 0x04, 0x04, 0x00};
 
   if (solaxX1Serial->available()) {
-    if (solaxX1_RS485Receive(DataRead)) { // CRC-error -> no further action
-      DEBUG_SENSOR_LOG(PSTR("SX1: Data response CRC error"));
-      return;
-    }
+    bool CRCfault = solaxX1_RS485Receive(DataRead); // store CRC-error
   
-    solaxX1_global.SendRetry_count = 20; // Inverter is responding
-
     if (DataRead[0] != 0xAA || DataRead[1] != 0x55) { // Check for header
-      DEBUG_SENSOR_LOG(PSTR("SX1: Check for header failed"));
+      if ((DataRead[0] == 0x01 || DataRead[0] == 0x02) && (DataRead[1] == 0x03 || DataRead[1] == 0x04)) { // Metermode
+        AddLog(LOG_LEVEL_INFO, PSTR("SX1: Metermode %02X %02X %02X"), DataRead[0], DataRead[1], DataRead[3]);
+        LastMeterTime = TasmotaGlobal.uptime;
+        solaxX1_SwitchMeterMode(true);
+        if (DataRead[0] == 0x01 && DataRead[1] == 0x03 && DataRead[3] == 0x0B) { // received "Register meter request"
+          solaxX1_RS485SendMeter(RegisterMeterResponse, 5);
+        } else if (DataRead[0] == 0x01 && DataRead[1] == 0x04 && DataRead[3] == 0x0C) { // received "Power request (32 bit float)"
+          memcpy(TempData, &solaxX1_global.MeterPower, 4);
+          for (uint8_t i = 0; i <= 3; i++) { // Store bytes in reverse order
+            ValueMeterResponse[i + 3] = TempData[3 - i];
+          }
+          solaxX1_RS485SendMeter(ValueMeterResponse, 7);
+        } else if (DataRead[0] == 0x01 && DataRead[1] == 0x04 && (DataRead[3] == 0x48 || DataRead[3] == 0x4A)) { // received "Import/Export request (32 bit float)"
+          solaxX1_RS485SendMeter(ValueMeterResponse, 7);
+        }
+        return;
+      } else {
+        DEBUG_SENSOR_LOG(PSTR("SX1: Check for header failed"));
+        return;
+      }
+    }
+
+    if (CRCfault) { // CRC-error -> no further action
+      AddLog(LOG_LEVEL_ERROR, PSTR("SX1: CRC error in received data"));
       return;
     }
+
+    solaxX1_global.SendRetry_count = 20; // Inverter is responding
+//    solaxX1_SwitchMeterMode(false);
 
     if (DataRead[6] == 0x11 && DataRead[7] == 0x82) { // received "Response for query (live data)"
       Energy->data_valid[0] = 0;
@@ -416,6 +513,11 @@ void solaxX1_250MSecond(void) { // Every 250 milliseconds
 
   } // end solaxX1Serial->available()
 
+  if(solaxX1_global.MeterMode) {
+    if (TasmotaGlobal.uptime > LastMeterTime + 20) solaxX1_SwitchMeterMode(false); // Switch back to normal mode, when no Meter request is received for 20 sec.
+    return;
+  }
+
 //  DEBUG_SENSOR_LOG(PSTR("SX1: solaxX1_global.AddressAssigned: %d, solaxX1_global.QueryData_count: %d, solaxX1_global.SendRetry_count: %d, solaxX1_global.QueryID_count: %d"), solaxX1_global.AddressAssigned, solaxX1_global.QueryData_count, solaxX1_global.SendRetry_count, solaxX1_global.QueryID_count);
   if (solaxX1_global.AddressAssigned) {
     if (!solaxX1_global.QueryData_count) { // normal periodically query
@@ -437,13 +539,13 @@ void solaxX1_250MSecond(void) { // Every 250 milliseconds
       solaxX1_global.SendRetry_count = 20;
       DEBUG_SENSOR_LOG(PSTR("SX1: Inverter went \"off\""));
       Energy->data_valid[0] = ENERGY_WATCHDOG;
-      solaxX1.temperature = solaxX1.dc1_voltage = solaxX1.dc2_voltage = solaxX1.dc1_current = solaxX1.dc2_current = solaxX1.dc1_power = 0;
-      solaxX1.dc2_power = Energy->current[0] = Energy->voltage[0] = Energy->frequency[0] = Energy->active_power[0] = 0;
+      solaxX1.temperature = solaxX1.dc1_voltage =  solaxX1.dc1_current = solaxX1.dc1_power = solaxX1.dc2_voltage = solaxX1.dc2_current = solaxX1.dc2_power = 0;
       solaxX1.runMode = -1; // off(line)
       solaxX1_global.AddressAssigned = false;
     } // end Inverter went "off"
   } else { // sent query for inverters in offline status
     if (!solaxX1_global.SendRetry_count) {
+      solaxX1_global.Command_QueryConfig = solaxX1_global.Command_QueryID = false; // Clear commands to be sure
       solaxX1_global.SendRetry_count = 20;
       DEBUG_SENSOR_LOG(PSTR("SX1: Sent query for inverters in offline state"));
       solaxX1_QueryOfflineInverters();
@@ -457,26 +559,58 @@ void solaxX1_SnsInit(void) {
   AddLog(LOG_LEVEL_INFO, PSTR("SX1: Init - RX-pin: %d, TX-pin: %d, RTS-pin: %d"), Pin(GPIO_SOLAXX1_RX), Pin(GPIO_SOLAXX1_TX), Pin(GPIO_SOLAXX1_RTS));
   solaxX1Serial = new TasmotaSerial(Pin(GPIO_SOLAXX1_RX), Pin(GPIO_SOLAXX1_TX), 1);
   if (solaxX1Serial->begin(SOLAXX1_SPEED)) {
-    if (solaxX1Serial->hardwareSerial()) { ClaimSerial(); }
+    if (solaxX1Serial->hardwareSerial()) ClaimSerial();
 #ifdef ESP32
     AddLog(LOG_LEVEL_DEBUG, PSTR("SX1: Serial UART%d"), solaxX1Serial->getUart());
 #endif
   } else {
     TasmotaGlobal.energy_driver = ENERGY_NONE;
   }
-  if (PinUsed(GPIO_SOLAXX1_RTS)) {
-    pinMode(Pin(GPIO_SOLAXX1_RTS), OUTPUT);
-  }
+  if (PinUsed(GPIO_SOLAXX1_RTS)) pinMode(Pin(GPIO_SOLAXX1_RTS), OUTPUT);
 }
 
 void solaxX1_DrvInit(void) {
   if (PinUsed(GPIO_SOLAXX1_RX) && PinUsed(GPIO_SOLAXX1_TX)) {
     TasmotaGlobal.energy_driver = XNRG_12;
     Energy->type_dc = true; // Handle like DC, because U*I from inverter is not valid for apparent power; U*I could be lower than active power
+    Energy->frequency[0] = 0; // Set value, to make frequency present in output
   }
 }
 
 bool SolaxX1_cmd(void) {
+char MBData[128];
+
+  if (Energy->command_code == CMND_POWERSET) {
+    if (XdrvMailbox.data_len) solaxX1_global.MeterPower = CharToFloat(XdrvMailbox.data);
+    ResponseCmndFloat(solaxX1_global.MeterPower, 2);
+    return true;
+  }
+
+  if (Energy->command_code != CMND_ENERGYCONFIG) return false; // Process unchanged data
+
+  if (!strncasecmp(XdrvMailbox.data, "MeterPowerTopic", 15)) {
+    if (solaxX1_global.MeterPowerTopic[0]) MqttUnsubscribe(solaxX1_global.MeterPowerTopic);
+    //String MBdata = XdrvMailbox.data;
+    //solaxX1_global.MeterPowerTopic = MBdata.substr (16);
+// https://cplusplus.com/reference/cstring/strchr/
+    memcpy(MBData, &XdrvMailbox.data[16], XdrvMailbox.data_len - 16);
+    MBData[XdrvMailbox.data_len - 16] = 0;
+    strcpy(solaxX1_global.MeterPowerTopic, MBData);
+    AddLog(LOG_LEVEL_INFO, PSTR("SX1: new Topic: %s"), solaxX1_global.MeterPowerTopic);
+    SolaxX1_MqttSubscribe();
+    return true;
+  }
+
+  int prefix_length = strlen(XdrvMailbox.command);
+  if (prefix_length) {
+    char prefix[prefix_length +1];
+    snprintf_P(prefix, sizeof(prefix), XdrvMailbox.topic);  // Copy prefix part only
+    if (strcasecmp(prefix, XdrvMailbox.command)) {
+      return false;                                         // Prefix not in command
+    }
+  }
+
+
   if (!solaxX1_global.AddressAssigned) {
     AddLog(LOG_LEVEL_INFO, PSTR("SX1: No inverter registered"));
     return false;
@@ -484,25 +618,44 @@ bool SolaxX1_cmd(void) {
 
   if (!strcasecmp(XdrvMailbox.data, "ReadIDinfo")) {
     solaxX1_global.Command_QueryID = true;
-    AddLog(LOG_LEVEL_INFO, PSTR("SX1: ReadIDinfo sent..."));
+//    AddLog(LOG_LEVEL_INFO, PSTR("SX1: ReadIDinfo sent..."));
     return true;
   } else if (!strcasecmp(XdrvMailbox.data, "ReadConfig")) {
 #ifdef SOLAXX1_READCONFIG
     solaxX1_global.Command_QueryConfig = true;
-    AddLog(LOG_LEVEL_INFO, PSTR("SX1: ReadConfig sent..."));
+//    AddLog(LOG_LEVEL_INFO, PSTR("SX1: ReadConfig sent..."));
     return true;
 #else
     AddLog(LOG_LEVEL_INFO, PSTR("SX1: Command not available. Please set compiler directive '#define SOLAXX1_READCONFIG'."));
-    return false;
+    return true;
 #endif // SOLAXX1_READCONFIG
   }
   AddLog(LOG_LEVEL_INFO, PSTR("SX1: Unknown command: \"%s\""),XdrvMailbox.data);
-  return false;
+  return false; // Process unchanged data
+}
+
+void SolaxX1_MqttSubscribe(void) {
+  if (!solaxX1_global.MeterPowerTopic[0]) return;
+  AddLog(LOG_LEVEL_INFO, PSTR("SX1: Subscribe to %s"), solaxX1_global.MeterPowerTopic);
+  MqttSubscribe(solaxX1_global.MeterPowerTopic);
+  //MqttSubscribe("MT175/tele/SENSOR");
+}
+
+bool SolaxX1_MqttData(void) {
+  AddLog(LOG_LEVEL_INFO, PSTR("SX1: topic: %s, data: %s, len: %d"), XdrvMailbox.topic, XdrvMailbox.data, XdrvMailbox.data_len);
+  if (!solaxX1_global.MeterPowerTopic[0]) return false;              // Process unchanged data
+  if (!strcasecmp(XdrvMailbox.topic, solaxX1_global.MeterPowerTopic)) {
+    AddLog(LOG_LEVEL_INFO, PSTR("SX1: Topic Match"));
+    return true;
+  }
+
+
+  return false; // Process unchanged data
 }
 
 #ifdef USE_WEBSERVER
-const char HTTP_SNS_solaxX1_Num[] PROGMEM = "{s}" D_SOLAX_X1 " %s{m}</td><td style='text-align:%s'>%s{m}{m} %s{e}";
-const char HTTP_SNS_solaxX1_Str[] PROGMEM = "{s}" D_SOLAX_X1 " %s{m}%s{e}";
+const char HTTP_SNS_solaxX1_Num[] PROGMEM = "{s}" D_SOLAX_X1 " %s{m}</td><td style='text-align:%s'>%s{m}{m}%s{e}";
+const char HTTP_SNS_solaxX1_Str[] PROGMEM = "{s}" D_SOLAX_X1 " %s</td><td style='text-align:right'>%s{e}";
 #endif // USE_WEBSERVER
 
 void solaxX1_Show(uint32_t function) {
@@ -538,16 +691,25 @@ void solaxX1_Show(uint32_t function) {
 
 #ifdef USE_DOMOTICZ
       // Avoid bad temperature report at beginning of the day (spikes of 1200 celsius degrees)
-      if (0 == TasmotaGlobal.tele_period && solaxX1.temperature < 100) { DomoticzSensor(DZ_TEMP, solaxX1.temperature); }
+      if (0 == TasmotaGlobal.tele_period && solaxX1.temperature < 100) DomoticzSensor(DZ_TEMP, solaxX1.temperature);
 #endif // USE_DOMOTICZ
       break;
 #ifdef USE_WEBSERVER
     case FUNC_WEB_COL_SENSOR: {
       String table_align = Settings->flag5.gui_table_align?"right":"left";
+      if (solaxX1_global.MeterMode) {
+        char meter_power[33];
+        WSContentSend_P(PSTR("<tr><td colspan=5><hr>{e}"));
+        dtostrfd(solaxX1_global.MeterPower, Settings->flag2.wattage_resolution, meter_power);
+        WSContentSend_PD(HTTP_SNS_solaxX1_Num, "Meter Power", table_align.c_str(), meter_power, D_UNIT_WATT);
+        return;
+      }
       static uint32_t LastOnlineTime;
       if (solaxX1.runMode != -1) LastOnlineTime = TasmotaGlobal.uptime;
       if (TasmotaGlobal.uptime < LastOnlineTime + 300) { // Hide numeric live data, when inverter is offline for more than 5 min
+#ifdef SOLAXX1_PV2
         WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_SOLAR_POWER, table_align.c_str(), solar_power, D_UNIT_WATT);
+#endif
         WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_PV1_VOLTAGE, table_align.c_str(), pv1_voltage, D_UNIT_VOLT);
         WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_PV1_CURRENT, table_align.c_str(), pv1_current, D_UNIT_AMPERE);
         WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_PV1_POWER,   table_align.c_str(), pv1_power,   D_UNIT_WATT);
@@ -563,6 +725,7 @@ void solaxX1_Show(uint32_t function) {
       WSContentSend_P(HTTP_SNS_solaxX1_Num, D_UPTIME, table_align.c_str(), String(solaxX1.runtime_total).c_str(), D_UNIT_HOUR);
       break; }
     case FUNC_WEB_SENSOR:
+      if (solaxX1_global.MeterMode) return;
       char errorCodeString[33];
       WSContentSend_P(HTTP_SNS_solaxX1_Str, D_STATUS, status);
       WSContentSend_P(HTTP_SNS_solaxX1_Str, D_ERROR, GetTextIndexed(errorCodeString, sizeof(errorCodeString), solaxX1_ParseErrorCode(solaxX1.errorCode), kSolaxError));
@@ -598,6 +761,12 @@ bool Xnrg12(uint32_t function) {
       break;
     case FUNC_COMMAND:
       result = SolaxX1_cmd();
+      break;
+    case FUNC_MQTT_SUBSCRIBE:
+      SolaxX1_MqttSubscribe();
+      break;
+    case FUNC_MQTT_DATA:
+      result = SolaxX1_MqttData();
       break;
   }
   return result;
