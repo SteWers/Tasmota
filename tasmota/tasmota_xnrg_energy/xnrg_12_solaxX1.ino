@@ -608,15 +608,22 @@ void solaxX1_DrvInit(void) {
 }
 
 bool SolaxX1_cmd(void) {
+  /*
   if (Energy->command_code == CMND_POWERSET) {
     if (XdrvMailbox.data_len) solaxX1_global.MeterPower = CharToFloat(XdrvMailbox.data);
     ResponseCmndFloat(solaxX1_global.MeterPower, 2);
     return false;
   }
+  */
 
   if (Energy->command_code != CMND_ENERGYCONFIG) return false; // Process unchanged data
 
-  if (!strncasecmp(XdrvMailbox.data, "MeterImport", 11)) {
+    if (!strncasecmp(XdrvMailbox.data, "MeterPower", 10)) {
+    solaxX1_global.MeterPower = CharToFloat(&XdrvMailbox.data[11]);
+    ResponseCmndFloat(solaxX1_global.MeterPower, 1);
+    AddLog(LOG_LEVEL_DEBUG, PSTR("SX1: MeterPower: %3_f"), &solaxX1_global.MeterPower);
+    return false;
+  } else if (!strncasecmp(XdrvMailbox.data, "MeterImport", 11)) {
     solaxX1_global.MeterImport = CharToFloat(&XdrvMailbox.data[12]);
     ResponseCmndFloat(solaxX1_global.MeterImport, 8);
     AddLog(LOG_LEVEL_DEBUG, PSTR("SX1: MeterImport: %3_f"), &solaxX1_global.MeterImport);
