@@ -608,14 +608,6 @@ void solaxX1_DrvInit(void) {
 }
 
 bool SolaxX1_cmd(void) {
-  /*
-  if (Energy->command_code == CMND_POWERSET) {
-    if (XdrvMailbox.data_len) solaxX1_global.MeterPower = CharToFloat(XdrvMailbox.data);
-    ResponseCmndFloat(solaxX1_global.MeterPower, 2);
-    return false;
-  }
-  */
-
   if (Energy->command_code != CMND_ENERGYCONFIG) return false; // Process unchanged data
 
     if (!strncasecmp(XdrvMailbox.data, "MeterPower", 10)) {
