@@ -966,6 +966,10 @@ const uint16_t kGpioNiceList[] PROGMEM = {
   AGPIO(GPIO_SOLAXX1_RX),                        // Solax Inverter rx pin
   AGPIO(GPIO_SOLAXX1_RTS),                       // Solax Inverter RTS pin
 #endif  // USE_SOLAX_X1
+#ifdef USE_SOLAX_X1_USB
+  AGPIO(GPIO_SOLAXX1_TX),                        // Solax Inverter tx pin
+  AGPIO(GPIO_SOLAXX1_RX),                        // Solax Inverter rx pin
+#endif  // USE_SOLAX_X1_USB
 #ifdef USE_LE01MR
   AGPIO(GPIO_LE01MR_TX),                         // F7F LE-01MR energy meter tx pin
   AGPIO(GPIO_LE01MR_RX),                         // F7F LE-01MR energy meter rx pin
