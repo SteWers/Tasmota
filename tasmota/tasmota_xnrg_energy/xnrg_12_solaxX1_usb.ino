@@ -243,8 +243,6 @@ void solaxX1_CyclicTask(void) { // Every 100/250 milliseconds
   float TempFloat;
   static uint32_t LastMeterTime;
 
-  static uint8_t SkipRead = 0;
-
   if (solaxX1Serial->available()) {
     if (solaxX1_USBReceive(DataRead)) { // CRC or other error -> no further action
       AddLog(LOG_LEVEL_ERROR, PSTR("SX1: CRC error in received data"));
@@ -259,13 +257,6 @@ void solaxX1_CyclicTask(void) { // Every 100/250 milliseconds
     solaxX1_global.SendRetry_count = 20; // Inverter is responding
 
     if (DataRead[3] == 0x01 && DataRead[4] == 0x8C) { // received response RequestLiveDataUSB
-
-      if (SkipRead < 10) {
-  AddLog(LOG_LEVEL_DEBUG, PSTR("SX1: SkipRead: %d"), SkipRead);
-        SkipRead++;
-        return;
-      }
-
       Energy->data_valid[0] = 0;
       solaxX1.temperature =       (DataRead[84] << 8)  |  DataRead[83]; // Temperature
       solaxX1.energy_today =     ((DataRead[32] << 8)  |  DataRead[31]) * 0.1f; // Energy Today
