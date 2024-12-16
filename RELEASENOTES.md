@@ -75,7 +75,7 @@ Latest released binaries can be downloaded from
 - http://ota.tasmota.com/tasmota/release
 
 Historical binaries can be downloaded from
-- http://ota.tasmota.com/tasmota/release-14.4.0
+- http://ota.tasmota.com/tasmota/release-14.4.1
 
 The latter links can be used for OTA upgrades too like ``OtaUrl http://ota.tasmota.com/tasmota/release/tasmota.bin.gz``
 
@@ -104,7 +104,7 @@ Latest released binaries can be downloaded from
 - https://ota.tasmota.com/tasmota32/release
 
 Historical binaries can be downloaded from
-- https://ota.tasmota.com/tasmota32/release-14.4.0
+- https://ota.tasmota.com/tasmota32/release-14.4.1
 
 The latter links can be used for OTA upgrades too like ``OtaUrl https://ota.tasmota.com/tasmota32/release/tasmota32.bin``
 
@@ -114,16 +114,15 @@ The latter links can be used for OTA upgrades too like ``OtaUrl https://ota.tasm
 
 [Complete list](BUILDS.md) of available feature and sensors.
 
-## Changelog v14.4.0.1
+## Changelog v14.4.1.1
 ### Added
-- MCP23XXX_DRV control register IOCON in template [#22622](https://github.com/arendst/Tasmota/issues/22622)
+- Command ``SetOption163 1`` to disable display of Device name in GUI header
 
 ### Breaking Changed
 
 ### Changed
+- ESP32 disable PSRAM check (and on restart some relay toggles) with `#define DISABLE_PSRAMCHECK` [#21266](https://github.com/arendst/Tasmota/issues/21266)
 
 ### Fixed
-- GUI display power button regression from v14.3.0.5 [#15788](https://github.com/arendst/Tasmota/issues/15788)
-- ESP32 rules operation priority regression from v13.3.0.4 [#22636](https://github.com/arendst/Tasmota/issues/22636)
 
 ### Removed

@@ -360,15 +360,15 @@ void MCP23xPinMode(uint8_t pin, uint8_t flags) {
   }
   switch (flags) {
     case INPUT:
-      MCP23xUpdate(pin, true, iodir);
-      MCP23xUpdate(pin, false, gppu);
+      MCP23xUpdate(pin, true, iodir);                  // Pin is configured as an input
+      MCP23xUpdate(pin, false, gppu);                  // Pull-up disabled
       break;
     case INPUT_PULLUP:
-      MCP23xUpdate(pin, true, iodir);
-      MCP23xUpdate(pin, true, gppu);
+      MCP23xUpdate(pin, true, iodir);                  // Pin is configured as an input
+      MCP23xUpdate(pin, true, gppu);                   // Pull-up enabled
       break;
     case OUTPUT:
-      MCP23xUpdate(pin, false, iodir);
+      MCP23xUpdate(pin, false, iodir);                 // Pin is configured as an output
       break;
   }
 
@@ -392,21 +392,21 @@ void MCP23xPinInterruptMode(uint8_t pin, uint8_t interrupt_mode) {
   }
   switch (interrupt_mode) {
     case MCP23XXX_CHANGE:
-      MCP23xUpdate(pin, true, gpinten);
-      MCP23xUpdate(pin, false, intcon);
+      MCP23xUpdate(pin, true, gpinten);                // Enable GPIO input pin for interrupt-on-change event
+      MCP23xUpdate(pin, false, intcon);                // Pin value is compared against the previous pin value
       break;
     case MCP23XXX_RISING:
-      MCP23xUpdate(pin, true, gpinten);
-      MCP23xUpdate(pin, true, intcon);
-      MCP23xUpdate(pin, true, defval);
+      MCP23xUpdate(pin, true, gpinten);                // Enable GPIO input pin for interrupt-on-change event
+      MCP23xUpdate(pin, true, intcon);                 // Controls how the associated pin value is compared for interrupt-on-change
+      MCP23xUpdate(pin, false, defval);                // If the associated pin level is the opposite from the register bit, an interrupt occurs.
       break;
     case MCP23XXX_FALLING:
-      MCP23xUpdate(pin, true, gpinten);
-      MCP23xUpdate(pin, true, intcon);
-      MCP23xUpdate(pin, false, defval);
+      MCP23xUpdate(pin, true, gpinten);                // Enable GPIO input pin for interrupt-on-change event
+      MCP23xUpdate(pin, true, intcon);                 // Controls how the associated pin value is compared for interrupt-on-change
+      MCP23xUpdate(pin, true, defval);                 // If the associated pin level is the opposite from the register bit, an interrupt occurs.
       break;
     case MCP23XXX_NO_INTERRUPT:
-      MCP23xUpdate(pin, false, gpinten);
+      MCP23xUpdate(pin, false, gpinten);               // Disable GPIO input pin for interrupt-on-change event
       break;
   }
 }
@@ -415,7 +415,7 @@ void MCP23xSetPinModes(uint8_t pin, uint8_t flags) {
   // pin 0 - 63
   MCP23xPinMode(pin, flags);
   if (Mcp23x.device[Mcp23x.chip].pin_int > -1) {       // Mcp23x.chip is updated by call to MCP23xPinMode
-    MCP23xPinInterruptMode(pin, MCP23XXX_CHANGE);
+    MCP23xPinInterruptMode(pin, (Mcp23x.iocon.ODR) ? MCP23XXX_FALLING : MCP23XXX_CHANGE);
   }
 }
 
@@ -479,7 +479,7 @@ uint32_t MCP23xGetPin(uint32_t lpin) {
 /*********************************************************************************************/
 
 bool MCP23xAddItem(uint8_t &item) {
-  if (item >= MAX_RELAYS_SET) {
+  if (item >= MAX_RELAYS_SET) {                        // MAX_RELAYS_SET = MAX_SWITCHES_SET = MAX_KEYS_SET = 32
     AddLog(LOG_LEVEL_INFO, PSTR("MCP: Max reached"));
     return false;
   }
@@ -582,7 +582,7 @@ bool MCP23xLoadTemplate(void) {
       }
     }
     Mcp23x.max_pins = pin;                             // Max number of configured pins
-    AddLog(LOG_LEVEL_INFO, PSTR("MCP: Pins used %d (S%d/B%d/R%d)"), Mcp23x.max_pins, Mcp23x.switch_max, Mcp23x.button_max, Mcp23x.relay_max);
+    AddLog(LOG_LEVEL_INFO, PSTR("MCP: Pins %d (S%d/B%d/R%d)"), Mcp23x.max_pins, Mcp23x.switch_max, Mcp23x.button_max, Mcp23x.relay_max);
   }
 
 //  AddLog(LOG_LEVEL_DEBUG, PSTR("MCP: Pins %d, Mcp23x_gpio_pin %*_V"), Mcp23x.max_pins, Mcp23x.max_pins, (uint8_t*)Mcp23x_gpio_pin);
@@ -628,7 +628,7 @@ void MCP23xModuleInit(void) {
 #endif
     while ((Mcp23x.max_devices < MCP23XXX_MAX_DEVICES) && PinUsed(GPIO_MCP23SXX_CS, Mcp23x.max_devices)) {
       Mcp23x.chip = Mcp23x.max_devices;
-      uint32_t pin_int = (Mcp23x.iocon.ODR) ? 0 : Mcp23x.chip;  // INT pins are open-drain outputs and supposedly connected together to one GPIO
+      uint32_t pin_int = (Mcp23x.iocon.ODR) ? 0 : Mcp23x.chip;  // INT ODR pins are open-drain outputs and supposedly connected together to one GPIO
       Mcp23x.device[Mcp23x.chip].pin_int = (PinUsed(GPIO_MCP23XXX_INT, pin_int)) ? Pin(GPIO_MCP23XXX_INT, pin_int) : -1;
       Mcp23x.device[Mcp23x.chip].pin_cs = Pin(GPIO_MCP23SXX_CS, Mcp23x.max_devices);
       digitalWrite(Mcp23x.device[Mcp23x.chip].pin_cs, 1);
@@ -719,6 +719,8 @@ void MCP23xModuleInit(void) {
     return;
   }
 
+  AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("MCP: INT open-drain %d"), Mcp23x.iocon.ODR);
+
   Mcp23x.relay_offset = TasmotaGlobal.devices_present;
   Mcp23x.relay_max -= UpdateDevicesPresent(Mcp23x.relay_max);
 
@@ -774,8 +776,9 @@ void MCP23xInit(void) {
           gpio = MCP23xRead16(MCP23X17_GPIOA);         // Clear MCP23x17 interrupt
         }
         if (Mcp23x.iocon.ODR && Mcp23x.chip) { continue; }
+//        pinMode(Mcp23x.device[Mcp23x.chip].pin_int, (Mcp23x.iocon.ODR) ? INPUT_PULLUP : INPUT);
         pinMode(Mcp23x.device[Mcp23x.chip].pin_int, INPUT_PULLUP);
-        attachInterrupt(Mcp23x.device[Mcp23x.chip].pin_int, MCP23xInputIsr, CHANGE);
+        attachInterrupt(Mcp23x.device[Mcp23x.chip].pin_int, MCP23xInputIsr, (Mcp23x.iocon.ODR) ? FALLING : CHANGE);
       }
     }
   }
