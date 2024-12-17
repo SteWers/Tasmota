@@ -122,7 +122,7 @@ struct SOLAXX1_LIVEDATA {
 
 struct SOLAXX1_GLOBALDATA {
   bool SolaxUSBregistered = false;
-  uint8_t SendRetry_count = 20;
+  uint8_t SendRetry_count = 5;
   uint8_t QueryData_count = 0;
 
   bool Command_QueryID = false;
@@ -419,7 +419,7 @@ void solaxX1_EverySecond(void) {
 
 //  int32_t tdiff = abs(Settings->energy_kWhtoday_ph[0] - RtcSettings.energy_kWhtoday_ph[0]);
 //  AddLog(LOG_LEVEL_DEBUG, PSTR("SX1: imp_active: %1_f, set: %d, rtc: %d, tdiff: %d"), &Energy->import_active[0], Settings->energy_kWhtoday_ph[0], RtcSettings.energy_kWhtoday_ph[0], tdiff);
-  AddLog(LOG_LEVEL_DEBUG, PSTR("SX1: moduptime: %d, tdiff: %d"), TasmotaGlobal.uptime % 300, RtcSettings.energy_kWhtoday_ph[0] - Settings->energy_kWhtoday_ph[0]);
+//  AddLog(LOG_LEVEL_DEBUG, PSTR("SX1: moduptime: %d, tdiff: %d"), TasmotaGlobal.uptime % 300, RtcSettings.energy_kWhtoday_ph[0] - Settings->energy_kWhtoday_ph[0]);
 //  if (tdiff > 1000) EnergySaveState();
   if ((RtcSettings.energy_kWhtoday_ph[0] - Settings->energy_kWhtoday_ph[0]) && !(TasmotaGlobal.uptime % 300)) EnergySaveState();
 } // end solaxX1_EverySecond
