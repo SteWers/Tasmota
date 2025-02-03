@@ -536,8 +536,12 @@ void solaxX1_Show(uint32_t function) {
         WSContentSend_PD(HTTP_SNS_solaxX1_Mtr, "Export", table_align.c_str(), TempDataChar, D_UNIT_KILOWATTHOUR);
         return;
       }
+      if (!Settings->flag3.hardware_energy_total) {   // SetOption72 - Enable hardware energy total counter as reference (#6561)
+        WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_ENERGY_TODAY, table_align.c_str(), inverter_today, D_UNIT_KILOWATTHOUR);
+        WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_ENERGY_TOTAL, table_align.c_str(), inverter_total, D_UNIT_KILOWATTHOUR);
+      }
       static uint32_t LastOnlineTime;
-      if (solaxX1.runMode != -1) LastOnlineTime = TasmotaGlobal.uptime;
+      if (solaxX1.runMode > -1) LastOnlineTime = TasmotaGlobal.uptime;
       if (TasmotaGlobal.uptime < LastOnlineTime + 300) { // Hide numeric live data, when inverter is offline for more than 5 min
 #ifdef SOLAXX1_PV2
         WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_SOLAR_POWER, table_align.c_str(), solar_power, D_UNIT_WATT);
@@ -550,10 +554,6 @@ void solaxX1_Show(uint32_t function) {
         WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_PV2_CURRENT, table_align.c_str(), pv2_current, D_UNIT_AMPERE);
         WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_PV2_POWER,   table_align.c_str(), pv2_power,   D_UNIT_WATT);
 #endif
-        if (!Settings->flag3.hardware_energy_total) {   // SetOption72 - Enable hardware energy total counter as reference (#6561)
-          WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_ENERGY_TODAY, table_align.c_str(), inverter_today, D_UNIT_KILOWATTHOUR);
-          WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_ENERGY_TOTAL, table_align.c_str(), inverter_total, D_UNIT_KILOWATTHOUR);
-        }
         char SXTemperature[16];
         dtostrfd(solaxX1.temperature, Settings->flag2.temperature_resolution, SXTemperature);
         WSContentSend_PD(HTTP_SNS_solaxX1_Num, D_TEMPERATURE, table_align.c_str(), SXTemperature, D_UNIT_DEGREE D_UNIT_CELSIUS);
