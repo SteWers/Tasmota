@@ -403,6 +403,10 @@ LList<char*> backlog;                       // Command backlog implemented with 
 #endif  // ESP32
 
 void setup(void) {
+#ifdef POWERON_DELAY_SECS
+  if (ResetReasonPowerOn()) delay(POWERON_DELAY_SECS * 1000);
+#endif // POWERON_DELAY_SECS
+
 #ifdef ESP32
 #ifdef CONFIG_IDF_TARGET_ESP32
 
